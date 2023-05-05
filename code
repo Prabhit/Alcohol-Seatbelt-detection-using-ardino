@@ -1,0 +1,152 @@
+#include <LiquidCrystal.h>
+#define BUZZ 13
+#define MQ3 A2
+#define trigger_value 280
+#define ARRAY_LIMIT 40
+#define START_CAR_BTN 12
+#define RELAY_PIN 9
+#define SEAT_PIN 10
+
+
+float sensor_value;
+const int rs = 7, en = 6, d4 = 2, d5 = 3, d6 = 4, d7 = 5;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+bool engine_running = 0;
+
+void setup() {
+  delay(1000);
+  pinMode(START_CAR_BTN, INPUT_PULLUP);
+  pinMode(SEAT_PIN, INPUT_PULLUP);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZ, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH);
+  lcd.begin(16, 2);
+  Serial.begin(9600);
+  lcd_print("Starting...");
+  // put your setup code here, to run once:
+  delay(10000);
+  lcd.clear();
+}
+
+uint8_t test_alcohol() {
+  float reading_arr[ARRAY_LIMIT];
+  uint16_t i = 0;
+
+  delay(1000);
+  lcd_print("Blow Air...");
+  delay(2100);
+  //<-----------Store  Value  In Array--->
+  // Read First 20 Reading And Stores value in array
+  for (i; i < ARRAY_LIMIT - 20; i++) {
+    sensor_value = analogRead(MQ3);
+    reading_arr[i] = sensor_value;
+    delay(100);
+  }
+  lcd_print("Stop..");
+  delay(2000);
+  lcd_print("Blow Again...");
+  // Read Next 20 Reading And Store value in array
+  for (i; i < ARRAY_LIMIT; i++) {
+    sensor_value = analogRead(MQ3);
+    reading_arr[i] = sensor_value;
+    delay(100);
+  }
+  lcd_print("Done");
+  //Itrate Whole Array To Count The Values
+  int trigger_repeat_count = 0;
+  int normal_reading_count = 0;
+  float drinked_avg_reading = 0;
+  float normal_avg_reading = 0;
+
+  for (uint16_t j = 0; j < ARRAY_LIMIT; j++) {
+    if (reading_arr[j] >= trigger_value) {
+      trigger_repeat_count++;
+      drinked_avg_reading += reading_arr[j];
+    } else {
+      normal_avg_reading += reading_arr[j];
+      normal_reading_count += 1;
+    }
+  }
+
+  Serial.println("trigger_repeat_count ");
+  Serial.println(trigger_repeat_count);
+
+  if (trigger_repeat_count >= 10) {
+    lcd_print("Alcohol detected");
+    digitalWrite(BUZZ, HIGH);
+    delay(2000);
+    lcd.setCursor(0, 1);
+    digitalWrite(BUZZ, LOW);
+
+    //<---------------Calculate Avg by Dividing array limit
+    drinked_avg_reading = drinked_avg_reading / float(trigger_repeat_count);
+    Serial.println("Avg reading ");
+    Serial.print(drinked_avg_reading);
+
+    lcd.print("Approx -> ");
+    lcd.print(drinked_avg_reading);
+    delay(2500);
+    return 1;
+  } else {
+    Serial.println("Normal reading ");
+    normal_avg_reading = normal_avg_reading / float(normal_reading_count);
+    Serial.print(normal_avg_reading);
+    lcd_print("Normal Reading..");
+    lcd.print(normal_avg_reading);
+    delay(2500);
+    return 0;
+  }
+}
+void lcd_print(String text) {
+  lcd.clear();
+  lcd.print(text);
+}
+
+void loop() {
+  int seat_pin = digitalRead(SEAT_PIN);
+  int start_btn = digitalRead(START_CAR_BTN);
+
+  if (seat_pin){
+      tone(BUZZ,1800,400);
+      delay(150);
+      noTone(BUZZ);
+      tone(BUZZ,700,600);
+      delay(300);
+      noTone(BUZZ);
+  }
+
+  lcd.setCursor(0, 0);
+  lcd.print("Engine Status ");
+  lcd.setCursor(0, 1);
+
+  if (engine_running)
+    lcd.print("Running..");
+  else
+    lcd.print("     Stopped..");
+
+  if (start_btn == 0) {
+    if (engine_running) {
+      engine_running = 0;
+      digitalWrite(RELAY_PIN, HIGH);
+      delay(2000);
+    } else {
+      uint8_t status = test_alcohol();
+      if (status) {
+        lcd_print("Can't Start Car");
+        engine_running = 0;
+        digitalWrite(RELAY_PIN, HIGH);
+      } else {
+        lcd_print("Starting car");
+        start_car();
+      }
+      delay(2000);
+      lcd.clear();
+    }
+  }
+  delay(500);
+}
+
+void start_car() {
+  engine_running = 1;
+  digitalWrite(RELAY_PIN, LOW);
+}
